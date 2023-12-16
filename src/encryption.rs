@@ -18,6 +18,8 @@ use shuttle_runtime::tokio::io::AsyncReadExt;
 
 const BUFFER_LEN: usize = 500;
 const NONCE_LEN: usize = 16;
+
+/// Used for encrypting and decrypting a file
 pub struct EncryptDecrypt {
     pub key: Option<Key<Aes256Gcm>>,
     pub salt: Option<SaltString>,
@@ -26,7 +28,7 @@ pub struct EncryptDecrypt {
 
 impl EncryptDecrypt {
 
-    /// only uses file handle in self
+    /// reads in chunks of bytes from self.file, then encrypts them using a key generated from random salt and the password parameter
     pub fn decrypt_stream(mut self,password: String) -> impl Stream<Item=Result<Bytes, Box<dyn std::error::Error + 'static>>> {
         let s = stream! {
             // read in the salt
@@ -66,6 +68,8 @@ impl EncryptDecrypt {
         s
     }
 
+    /// self.file, self.salt, and self.key should be Some before using this function.
+    /// keys and salt can be generated using the generate_key function
     /// salt writen to the first 12 bytes of file
     /// only the first 7 of those bytes need to be used for the AESGCM cypher's salt but all 12 should be used to generate the key stream
     pub fn encrypt_stream(mut self) -> impl Stream<Item=Result<Vec<u8> , Box<dyn std::error::Error + 'static>>> {
