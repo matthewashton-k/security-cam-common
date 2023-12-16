@@ -1,6 +1,6 @@
 [package]
 name = "security-cam-common"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 description = "common code used by personal shuttle projects for creating Stream objects to send encrypted/decrypted files in chunks over the network."
 license = "MIT"
