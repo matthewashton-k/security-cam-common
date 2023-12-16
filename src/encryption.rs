@@ -1,6 +1,4 @@
-
-
-
+use std::io::ErrorKind;
 use actix_web::web::{Bytes};
 use aes_gcm::aead::stream;
 use aes_gcm::aead::{Key, KeyInit};
@@ -18,6 +16,7 @@ use shuttle_runtime::tokio::io::AsyncReadExt;
 
 const BUFFER_LEN: usize = 500;
 const NONCE_LEN: usize = 16;
+trait SizedError: std::error::Error + std::marker::Sized {}
 
 /// Used for encrypting and decrypting a file
 pub struct EncryptDecrypt {
@@ -72,13 +71,15 @@ impl EncryptDecrypt {
     /// keys and salt can be generated using the generate_key function
     /// salt writen to the first 12 bytes of file
     /// only the first 7 of those bytes need to be used for the AESGCM cypher's salt but all 12 should be used to generate the key stream
-    pub fn encrypt_stream(mut self) -> impl Stream<Item=Result<Vec<u8> , Box<dyn std::error::Error + 'static>>> {
+    pub fn encrypt_stream(mut self) -> impl Stream<Item=Result<Vec<u8> , std::io::Error>> {
         let s = stream! {
             if self.key.is_none() || self.salt.is_none() { // if no nonce is found
-                yield Err("nonce not found".into()); // yeilding an error will stop stream
+                yield Err(std::io::Error::new(ErrorKind::Other, "nonce or key not found")); // yeilding an error will stop stream
             }
             let b64_decoder = base64::engine::general_purpose::STANDARD_NO_PAD;
-            let nonce = b64_decoder.decode(self.salt.unwrap().as_str())?;
+            let nonce = b64_decoder.decode(self.salt.unwrap().as_str()).map_err(|e| {
+                std::io::Error::new(ErrorKind::Other, e.to_string())
+            })?;
 
             let mut buffer = [0u8; BUFFER_LEN];
 
@@ -91,7 +92,8 @@ impl EncryptDecrypt {
             loop {
                 let read_count = self.file.read(&mut buffer).await?;
                 if read_count == BUFFER_LEN {
-                    let encrypted = encryptor.encrypt_next(&buffer[..]).map_err(|e| e.to_string().into());
+                    let encrypted = encryptor.encrypt_next(&buffer[..])
+                        .map_err(|e| std::io::Error::new(ErrorKind::Other, e.to_string()));
                     yield encrypted;
                 } else if read_count == 0 {
                     break;
@@ -101,7 +103,7 @@ impl EncryptDecrypt {
             }
             let encrypted = (encryptor)
                 .encrypt_last(&last_chunk[..])
-                .map_err(|e| e.to_string().into());
+                .map_err(|e| std::io::Error::new(ErrorKind::Other, e.to_string()));
             yield encrypted;
         };
         s // return the stream
