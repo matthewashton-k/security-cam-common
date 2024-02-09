@@ -119,8 +119,6 @@ pub fn generate_keystream(password:&str,salt: &[u8]) -> Result<Key<Aes256Gcm>, B
 }
 
 
-
-
 // /// currently only used for testing purposes
 // fn encrypt_bytes(key: &Key<Aes256Gcm>,salt:SaltString, plaintext: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
 //     let cipher = Aes256Gcm::new(key);
