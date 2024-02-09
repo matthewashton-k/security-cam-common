@@ -38,8 +38,6 @@ pub fn encrypt_stream(key: Key<Aes256Gcm>, salt: SaltString, mut file: tokio::fs
                 if read_count == BUFFER_LEN {
                     let encrypted = encryptor.encrypt_next(&buffer[..])
                         .map_err(|e| std::io::Error::new(ErrorKind::Other, e.to_string()));
-
-                    println!("sent some bytes many encrypted bytes: {}", read_count);
                     yield encrypted;
                 } else if read_count == 0 {
                     break;
@@ -50,7 +48,6 @@ pub fn encrypt_stream(key: Key<Aes256Gcm>, salt: SaltString, mut file: tokio::fs
             let encrypted = (encryptor)
                 .encrypt_last(&last_chunk[..])
                 .map_err(|e| std::io::Error::new(ErrorKind::Other, e.to_string()));
-            println!("sent this many encrypted bytes: {}", last_chunk.len());
             yield encrypted;
         };
     s // return the stream
@@ -82,13 +79,11 @@ pub fn decrypt_stream(mut file: tokio::fs::File, password: String) -> impl Strea
                         println!("got an error: {:?}",e);
                         e.to_string().into()
                     });
-                println!("the bytes: {decrypted:?}");
                 yield Ok(Bytes::from(decrypted?));
             }else if read_count == 0 {
                 println!("no bytes read");
                 break;
             } else {
-                println!("bytes saved to last_chunk");
                 last_chunk = buffer[..read_count].to_vec();
             }
         }
