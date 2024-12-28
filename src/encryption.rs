@@ -56,8 +56,11 @@ impl<E: std::error::Error + Send + 'static> FrameReader<E> {
 impl<E: std::error::Error> Drop for FrameReader<E> {
     fn drop(&mut self) {
         println!(
-            "FrameReader dropped at {}",
-            std::backtrace::Backtrace::capture().to_string()
+            "FrameReader dropped at position {} with {} bytes remaining",
+            self.position,
+            self.current_frame
+                .as_ref()
+                .map_or(0, |f| f.len() - self.position)
         );
     }
 }
@@ -99,7 +102,7 @@ impl<E: std::error::Error> AsyncRead for FrameReader<E> {
                     continue;
                 }
                 Poll::Ready(None) => {
-                    // Stream is finished
+                    println!("[COMMON] stream finished");
                     return Poll::Ready(Ok(()));
                 }
                 Poll::Pending => {
@@ -144,7 +147,6 @@ pub fn encrypt_frame_reader<E: std::error::Error>(
     frame_size: usize,
 ) -> impl Stream<Item = Result<Vec<u8>, std::io::Error>> {
     let s = stream! {
-        println!("[COMMON] started stream");
         let b64_decoder = base64::engine::general_purpose::STANDARD_NO_PAD;
         let nonce = b64_decoder.decode(salt.as_str()).map_err(|e| {
             std::io::Error::new(ErrorKind::Other, e.to_string())
@@ -156,32 +158,25 @@ pub fn encrypt_frame_reader<E: std::error::Error>(
             Aes256Gcm::new(&key),
             nonce[0..7].into()
         ));
-
         yield Ok(nonce); // nonce will be appended to the beginning of the file
-        println!("[COMMON] yielded nonce");
         let mut frame = Vec::new();
         loop {
-            println!("[COMMON] trying to read new frame in");
             let read_count = frame_stream.read(&mut buffer).await?;
-            println!("[COMMON] read in a frame of length: {read_count}, where frame size should be: {frame_size}");
             if read_count == frame_size {
                 let encrypted = encryptor.encrypt_next(&buffer[..])
                     .map_err(|e| std::io::Error::new(ErrorKind::Other, e.to_string()));
-                println!("[COMMON] yeilding encrypted frame, encryption error: {}", encrypted.is_err());
                 yield Ok(encrypted?);
-                println!("[COMMON] yeilded encrypted frame");
             } else if read_count == 0 {
-                println!("[COMMON] read count was zero");
                 break;
             } else {
-                println!("[COMMON] encrypting last frame");
                 frame = buffer[..read_count].to_vec();
             }
         }
         let encrypted = encryptor.encrypt_last(&frame[..])
-            .map_err(|e| std::io::Error::new(ErrorKind::Other, e.to_string()));
+            .map_err(|e| {
+                std::io::Error::new(ErrorKind::Other, e.to_string())
+            });
         yield Ok(encrypted?);
-        println!("[COMMON] yeilded last encrypted frame");
     };
     s
 }
@@ -192,20 +187,17 @@ pub fn decrypt_frame_reader<E: std::error::Error>(
     password: String,
 ) -> impl Stream<Item = Result<Bytes, Box<dyn std::error::Error + 'static>>> {
     let s = stream! {
-        println!("[COMMON] started decryption stream");
         // read in the salt
         let mut buffer = vec![0u8; frame_size+16];
         let mut salt = [0u8; NONCE_LEN];
         encrypted_frame_stream.read_exact(&mut salt).await?;
         let salt = salt.to_vec();
-        println!("[COMMON] read the nonce");
         // generate key from salt and password
         let key = generate_keystream(&password,&salt)?;
         let mut decryptor = stream::DecryptorBE32::from_aead(
             Aes256Gcm::new(&key),
             (&salt[0..7]).into()
         );
-        println!("[COMMON] made keystream and salt");
         // will store the last chunk of data that could be less than BUFFER_LEN
         let mut last_chunk = Vec::new();
         loop {
@@ -214,32 +206,24 @@ pub fn decrypt_frame_reader<E: std::error::Error>(
                     buffer.len()
                 }
                 Err(e) => {
-                    println!("[COMMON] {e}");
                     encrypted_frame_stream.read(&mut buffer).await?
                 }
             };
-
-            println!("[COMMON] read frame from frame stream with readcount: {read_count}");
             if read_count == frame_size+16 {
                 let decrypted: Result<Vec<u8>, Box<dyn std::error::Error>> = decryptor.decrypt_next(&buffer[..]).map_err(|e|
                     {
-                        println!("got an error: {:?}",e);
                         e.to_string().into()
                     });
-                println!("[COMMON] yielding decrypted bytes. encryption error: {}", decrypted.is_err());
                 yield Ok(Bytes::from(decrypted?));
             } else if read_count == 0 {
-                println!("no bytes read");
                 break;
             } else {
-                println!("[COMMON] last chunk read of length: {read_count} where the chunk size is {}", frame_size+16);
                 last_chunk = buffer[..read_count].to_vec();
             }
         }
         let decrypted: Result<Vec<u8>, Box<dyn std::error::Error>> = (decryptor)
         .decrypt_last(&last_chunk[..])
         .map_err(|e| e.to_string().into());
-        println!("[COMMON] sending last frame");
         yield Ok(Bytes::from(decrypted?));
     };
     s
