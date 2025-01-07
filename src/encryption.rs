@@ -467,16 +467,3 @@ pub fn generate_keystream(
         .map_err(|e| e.to_string())?;
     Ok(key_out.into())
 }
-
-// /// currently only used for testing purposes
-// fn encrypt_bytes(key: &Key<Aes256Gcm>,salt:SaltString, plaintext: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-//     let cipher = Aes256Gcm::new(key);
-//     let salt  = salt.to_string();
-//     // nonce only needs to be 12 bytes for aesgcm
-//     Ok(cipher.encrypt(salt.as_bytes()[0..12].into(), plaintext).map_err(|e| {e.to_string()})?)
-// }
-//
-// pub fn decrypt_bytes(key: &Key<Aes256Gcm>,salt:SaltString, ciphertext: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-//     let cipher = Aes256Gcm::new(key);
-//     Ok(cipher.decrypt(salt.to_string().to_string().as_bytes()[0..12].into(), ciphertext).map_err(|e| {e.to_string()})?)
-// }
