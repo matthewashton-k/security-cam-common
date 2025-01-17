@@ -12,4 +12,4 @@
 
 ## Crates:
 Server (Front end, Video hosting, session based login): https://github.com/matthewashton-k/security-cam-server
-Client (motion detection, v4l, frame processing): https://github.com/matthewashton-k/security-cam-client
+<br> Client (motion detection, v4l, frame processing): https://github.com/matthewashton-k/security-cam-client
